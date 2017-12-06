@@ -11,7 +11,7 @@ def lotteryPicker(numTix, picks, possible):
     odds = '{:,.0f}'.format(comTix) 
     print 'Calculating your winning numbers:'
     for i in range(tix):
-        ints = sorted(random.sample(range(possible), picks))
+        ints = sorted(random.sample(range(1,possible), picks))
         print ints
     
     print '\nYou have a %i in %s chance of winning the jackpot \nOr 1 in %s\nor a %f%% chance' % (tix, comboStr, odds, 100* (float(1.0)/float(comTix))) 
