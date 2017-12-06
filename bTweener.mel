@@ -1,0 +1,210 @@
+//2015 Brent Forrest
+	global float $bT_aVals[], $bT_bVals[], $bT_tweenVals[], $bT_kFrames[];
+	global string $bT_obAtts[], $bT_jobAtts[], $bT_knobAtts[], $bT_atts[], $bT_obj[], $bT_keyCurves[], $bT_keyedAtts[], $bT_bTween;
+	clear $bT_atts $bT_aVals $bT_bVals $bT_obAtts $bT_tweenVals $bT_keyedAtts $bT_keyCurves $bT_jobAtts;
+	
+	global int $bT_t = 0;
+	$bT_obj = `ls -sl`;
+	
+global proc getKeyframe(){
+	global float $bT_kFrames[];
+	$bT_kFrames[1] = `currentTime -q`;
+	$bT_kFrames[0] = `findKeyframe -timeSlider -which previous`;
+	$bT_kFrames[2] = `findKeyframe -timeSlider -which next`;
+}
+
+	global proc getValues(){
+	global string $bT_obAtts[], $bT_jobAtts[], $bT_knobAtts[], $bT_atts[], $bT_obj[], $bT_keyedAtts[], $bT_keyCurves[];
+	clear $bT_obAtts $bT_jobAtts $bT_knobAtts $bT_atts $bT_keyedAtts $bT_keyCurves;
+	$i = 0;
+		for ($bT_one in $bT_obj)
+		{
+		$bT_atts = `listAttr -hd -u -keyable $bT_one`;
+			for($bT_att in $bT_atts){
+			$bT_obAtts[$i] = ($bT_one + "." + $bT_att);
+			$i++;   
+			}
+		}         
+	$i = 0;
+	for ($bT_obAtt in $bT_obAtts) {
+		 if ( `connectionInfo -isDestination $bT_obAtt` == 1){
+			$bT_jobAtts[$i] = (`connectionInfo -sourceFromDestination $bT_obAtt`);  
+			$bT_knobAtts[$i] = $bT_obAtt;
+			 $i++;  
+		}else{
+			 continue;     
+		 }
+	}
+	int $bT_val=0;
+		for ($i=0; $i<size($bT_jobAtts); $i++){
+			if ((`nodeType $bT_jobAtts[$i]` == "animCurveTA") || (`nodeType $bT_jobAtts[$i]` == "animCurveTL") || (`nodeType $bT_jobAtts[$i]` == "animCurveTU")){
+				 $bT_keyedAtts[$bT_val] = $bT_knobAtts[$i];
+				 $bT_val++;
+			 }else{
+				 continue;
+			 }
+	}
+	print  (size($bT_obj)+" Objects, " + size($bT_obAtts) + " connected channels, " + size($bT_keyedAtts) + " animation curves");
+	}
+
+global proc samplePoses(){
+	global string $bT_keyCurves[], $bT_keyedAtts[], $bT_jobAtts[], $bT_obj[];
+	global float $bT_aVals[], $bT_bVals[], $bT_kFrames[];
+	if (size ($bT_obj)==0){
+	    print "Nothing Selected";
+	}else{
+	    $i=0;
+		for ($bT_jobAtt in $bT_jobAtts){
+				$bT_keyCurves[$i] = substituteAllString($bT_jobAtt, ".output", "");    
+				$i++;
+			}        
+        getKeyframe;
+		if ($bT_kFrames[0] > $bT_kFrames[1]){$bT_kFrames[0] = $bT_kFrames[1];}
+		setKeyframe -time $bT_kFrames[0] $bT_keyCurves;
+		for ($i=0; $i<size($bT_keyedAtts); $i++){
+		    $bT_aVals[$i] = `getAttr -time $bT_kFrames[0] $bT_keyedAtts[$i]`;	
+		}
+		if ($bT_kFrames[2] < $bT_kFrames[1]){$bT_kFrames[2] = $bT_kFrames[1];}
+		setKeyframe -time $bT_kFrames[2] $bT_keyCurves;
+		for ($i=0; $i<size($bT_keyedAtts); $i++){
+			$bT_bVals[$i] = `getAttr -time $bT_kFrames[2] $bT_keyedAtts[$i]`;	
+		}
+	}
+}
+	
+global proc prevNudge(){ 
+    global float $bT_kFrames[];
+    $bT_kFrames[1] = (`currentTime -q` - 1);
+    keyframe -t `currentTime -q` -edit -tc $bT_kFrames[1];
+    currentTime -e $bT_kFrames[1];
+}
+		
+global proc nextNudge(){ 
+    global float $bT_kFrames[];
+    $bT_kFrames[1] = (`currentTime -q` + 1);
+    keyframe -t `currentTime -q` -edit -tc $bT_kFrames[1];
+    currentTime -e $bT_kFrames[1];
+}
+		
+global proc resetXforms(){
+    string $selected[]=`ls -sl`;
+    string $attrs[];
+    for($x=0;$x<size($selected);++$x){
+        $attrs= `listAttr -k -u $selected[$x]`;
+        for($c=0;$c<size($attrs);++$c){
+            for ($xyz  in {"X","Y","Z"}){
+                for ($att in {".translate", ".rotate"}){
+                    setAttr ($selected[$x]+($att+$xyz)) 0;
+                }
+                for ($att in {".scale"}){
+                    setAttr ($selected[$x]+($att+$xyz)) 1;
+                }
+            }
+        }
+    }
+}
+
+global proc bTweenerUI(){
+	global string $bT_keyCurves[], $bT_keyedAtts[], $bT_btWin, $bT_kType[], $bT_bTween;
+	global float $bT_kFrames[];
+	global int $bT_t;
+	if (`window -exists $bT_btWin`){ 
+deleteUI $bT_btWin;}
+string $bT_btWin = ("bTweener");
+if ( `window -ex $bT_btWin`) deleteUI $bT_btWin;   
+window  -s false -rtf true -t ("Breakdown frame " + $bT_kFrames[1] + " - " +(size($bT_keyedAtts)) +" channels") $bT_btWin;
+	columnLayout main;
+		$bT_bTween = `floatSliderGrp  -s 0.1 -ss 0.1 -w 300 -cc "keyIt" -pre 2 -field true
+		-fieldMinValue -1 -fieldMaxValue 2
+		-minValue -0.5 -maxValue 1.5 -value 0.5 fsGroup`;
+	rowColumnLayout -h 20 -cs 6 4 -nc 9 buttons;
+		$bT_sButton = `button -bgc 0.1 0.1 0.1 -h 20 -w 35 -l "step" -command "timeSliderSetTangent step" step`;
+		$bT_lButton = `button -bgc 0.1 0.1 0.1 -h 20-w 40 -l "linear" -command "timeSliderSetTangent linear" lin`;
+		$bT_fBuztton = `button -bgc 0.1 0.1 0.1 -h 20-w 35 -l "flat" -command "timeSliderSetTangent flat" flat`;
+		$bT_sButton = `button -bgc 0.1 0.1 0.1 -h 20-w 45 -l "spline" -command "timeSliderSetTangent spline" spl`;
+		$bT_dButton = `button -bgc 0.5 0.1 0.1 -h 20-w 45 -l "delete" -command "timeSliderClearKey" del`;
+		$bT_pnButton = `button -bgc 0.2 0.3 0.1 -h 20-w 20 -l "<m" -command "prevNudge" prevN`;
+		$bT_pButton = `button -bgc 0.2 0.4 0.1 -h 20-w 30 -l "<<" -command "PreviousKey" prev`;
+		$bT_nButton = `button -bgc 0.3 0.4 0.1 -h 20-w 30 -l ">>" -command "NextKey" next`;
+		$bT_nnButton = `button -bgc 0.4 0.4 0.1-h 20-w 20 -l "m>" -command "nextNudge" nextN`;
+    setParent ..;
+    rowColumnLayout -h 22 -nc 9 buttonsB;
+		$bT_sPkButton = `button -bgc 0.9 0.5 0.5 -h 20 -w 70 -l "keyKeyed" -command "keyPreKeyed" keyPre`;
+		button -bgc 0.9 0.8 0.5 -h 20 -w 55 -l "copyKey" -command "timeSliderCopyKey" copy;
+		button -bgc 0.1 0.8 0.2 -h 20 -w 60 -l "pasteKey" -command "pasteEmKeys" paste;	
+		button -bgc 0.3 0.3 0.3 -h 20 -w 70 -l "resetXforms" -command "resetXforms" resetXforms;	
+		button -bgc 0 0 0 -h 20 -w 50 -l "unFuckit" -command "doit" unFuckit;			
+    showWindow;	
+}
+
+global proc pasteEmKeys(){
+    string $sel[] = `ls -sl`;
+    pasteKey -time (`currentTime -q`) -float (`currentTime -q`) -option merge -copies 1 -connect 0 -timeOffset 0 -floatOffset 0 -valueOffset 0 $sel;
+}
+
+global proc keyPreKeyed ()
+{
+string $sel[] = `ls -sl`;
+for ($each in $sel)
+	{
+	string $incoming[] = `listConnections -t animCurve -c 1 -scn 1 $each`;
+	for ($anm in $incoming)
+	    {
+	        string $attr = `match "[^_]*$" $anm`;
+	        string $buff[];
+	        int $tok = `tokenize $anm "." $buff`;
+	        if ($tok >= 2)
+	        setKeyframe $anm;
+		}
+	}
+}
+
+
+global proc evalWeight(){
+   global string $bT_keyedAtts[], $bT_bTween; 
+   global float $bT_aVals[], $bT_bVals[], $bT_tweenVals[];
+   float $bT_aW[], $bT_bW[];
+   float $bT_bWeight = (`floatSliderGrp -q -v $bT_bTween`)*2;
+   float $bT_aWeight = (`floatSliderGrp -q -v $bT_bTween`-1)*-2;     
+   for ($i=0;$i<size($bT_aVals);$i++){
+		$bT_aW[$i] = ($bT_aVals[$i] * $bT_aWeight);
+		$bT_bW[$i] = ($bT_bVals[$i] * $bT_bWeight);
+   }
+	   for ($i=0; $i<size($bT_keyedAtts); $i++){
+		   $bT_tweenVals[$i] = ($bT_aW[$i] + $bT_bW[$i])/2;
+		   setAttr $bT_keyedAtts[$i] $bT_tweenVals[$i];
+   } 
+}
+
+global proc keyIt(){
+    global string $bT_keyedAtts[], $bT_obj[], $bT_keyCurves[], $bT_btWin;
+    global float $bT_tweenVals[], $bT_kFrames[] ;
+    string $bT_cObj[] = `ls -sl`;
+    $bT_cObj[0] = (stringArrayToString ($bT_cObj, " "));
+    $bT_dObj = (stringArrayToString ($bT_obj, " "));
+    if ($bT_cObj[0] != $bT_dObj){
+        clear $bT_keyedAtts $bT_keyCurves $bT_obj;
+        $bT_obj = `ls-sl`;
+        getValues;
+        window -e -t ("Breakdown frame " + $bT_kFrames[1] + " - " +(size($bT_keyedAtts)) +" channels") $bT_btWin;
+    }
+    if (((`currentTime -q`) != $bT_kFrames[1]) || ((`findKeyframe -timeSlider -which previous`) != $bT_kFrames[0]) || ((`findKeyframe -timeSlider -which next`) != $bT_kFrames[2])){
+        getKeyframe;
+        window -e -t ("Breakdown frame " + $bT_kFrames[1] + " - " +(size($bT_keyedAtts)) +" channels") $bT_btWin;
+        samplePoses ;
+    }
+    evalWeight;
+    setKeyframe $bT_keyCurves;
+}
+	 
+proc doit(){ 
+    global string $bT_keyedAtts[];
+    getKeyframe;
+    getValues;
+    if (size($bT_keyedAtts) == 0){
+        print "None of the selected objects have animation curves";
+    }
+    bTweenerUI;
+    samplePoses;
+}
+doit;
