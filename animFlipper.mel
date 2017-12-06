@@ -1,0 +1,87 @@
+global proc flipIt(){
+    vector $rT[], $rR[], $rS[], $lT[], $lR[], $lS[];;
+    string $userAttsL[], $userAttsR[], $right[], $left[], $selR[], $selL[];;
+    
+    //define naming conventions
+    $right = {"right", "Right"};
+    $left = {"left", "Left"};
+    
+    //store user selection
+    for ($one in $right){
+       $store = `ls -sl ("*:*"+$one+"*")`;
+       $size = `size $store`;
+       appendStringArray($selR, $store, $size);
+    }
+    
+    for ($one in $left){
+       $store = `ls -sl ("*:*"+$one+"*")`;
+       $size = `size $store`;
+       appendStringArray($selL, $store, $size);
+    }
+    
+    //store R values
+    
+    if (`size $selR`){
+        for ($i=0;$i<`size $selR`;$i++){
+            $rT[$i] = `getAttr ($selR[$i]+".translate")`;
+            $rR[$i] = `getAttr ($selR[$i]+".rotate")`;
+            $rS[$i] = `getAttr ($selR[$i]+".scale")`; 
+            string $getUserAtts[] = `listAttr -ud -k $selR[$i]` ; 
+            for ($one in $getUserAtts){
+                $userAttsR[`size $userAttsR`] = ("setAttr "+$selR[$i]+"."+$one+" "+(`getAttr ($selR[$i]+"."+$one)`));
+            }
+        } 
+    }
+    print $userAttsR;
+    
+    //store L valuess
+    
+    if (`size $selL`){
+        for ($i=0;$i<`size $selL`;$i++){
+            $lT[$i] = `getAttr ($selL[$i]+".translate")`;
+            $lR[$i] = `getAttr ($selL[$i]+".rotate")`;
+            $lS[$i] = `getAttr ($selL[$i]+".scale")`;
+            string $getUserAtts[] = `listAttr -ud -k $selL[$i]` ; 
+            for ($one in $getUserAtts){
+                $userAttsL[`size $userAttsL`] = ("setAttr "+$selL[$i]+"."+$one+" "+(`getAttr ($selL[$i]+"."+$one)`));
+            }
+        }
+    }
+    print $userAttsL;    
+    doFlip(1, $selR, $left, $right, $rT, $rR, $rS, $userAttsR);
+    doFlip(0, $selL, $left, $right, $lT, $lR, $lS, $userAttsL);    
+}
+
+global proc doFlip(int $isR, string $sel[], string $left[], string $right[], vector $tr[], vector $ro[], vector $sc[], string $userAtt[]){
+    string $this, $that, $name;
+    if (`size $sel`){ 
+        for ($i=0;$i<`size $sel`;$i++){
+            for ($l in $left){
+                for ($r in $right){  
+                    if ($isR){ $this = $r; $that = $l; }
+                    if (!$isR){ $this = $l; $that = $r; }
+                    if (`gmatch $sel[$i] ("*"+$this+"*")`){
+                        $name = `substitute $this $sel[$i] $that`;
+                        if (`objExists $name`){                                            
+                            print ("from "+$sel[$i] + "\n");
+                            print ("to "+ $name + "\n");
+                            float $move[] = $tr[$i];
+                            float $rot[] = $ro[$i];
+                            float $scale[] = $sc[$i];
+                            move -a -ls $move[0] $move[1] $move[2] $name; 
+                            rotate -a -os $rot[0] $rot[1] $rot[2] $name;
+                            scale -a $scale[0] $scale[1] $scale[2] $name;    
+                            for ($one in $userAtt){
+                                $command = `substitute $r $one $l`;
+                                eval $command;                           
+                            }
+                        }
+                    }
+                }       
+            }    
+        }
+    }
+}
+
+flipIt();
+
